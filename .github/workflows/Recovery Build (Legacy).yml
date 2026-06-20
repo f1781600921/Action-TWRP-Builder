@@ -126,8 +126,13 @@ jobs:
 
     - name: Sync Device Dependencies
       run: |
-        bash ${GITHUB_WORKSPACE}/scripts/convert.sh ${{ github.event.inputs.DEVICE_PATH }}/${{ steps.buildtree.outputs.value }}.dependencies
-        repo sync -j$(nproc --all)
+        deps="${{ github.event.inputs.DEVICE_PATH }}/omni.dependencies"
+        if [ -f "$deps" ]; then
+          bash ${GITHUB_WORKSPACE}/scripts/convert.sh "$deps"
+          repo sync -j$(nproc --all)
+        else
+          echo "No device dependencies file at $deps; skipping."
+        fi
       working-directory: ${{ steps.pwd.outputs.workspace-folder }}
       continue-on-error: true
 
@@ -138,11 +143,27 @@ jobs:
 
     - name: Switch to Python2
       run: |
-        sudo apt -y install python
-        sudo rm -rf /usr/bin/python
-        sudo ln -s /usr/bin/python2 /usr/bin/python
-        # sudo ln -s /usr/bin/python3 /usr/bin/python3
-      continue-on-error: true
+        set -e
+        if command -v python2 >/dev/null 2>&1; then
+          PY2="$(command -v python2)"
+        elif sudo apt-get install -y python2; then
+          PY2="$(command -v python2)"
+        else
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev libffi-dev
+          curl -fsSL https://www.python.org/ftp/python/2.7.18/Python-2.7.18.tgz -o /tmp/Python-2.7.18.tgz
+          tar -xzf /tmp/Python-2.7.18.tgz -C /tmp
+          cd /tmp/Python-2.7.18
+          ./configure --prefix=/opt/python2.7 --enable-unicode=ucs4
+          make -j$(nproc --all)
+          sudo make altinstall
+          PY2="/opt/python2.7/bin/python2.7"
+        fi
+        sudo ln -sf "$PY2" /usr/local/bin/python2
+        sudo ln -sf "$PY2" /usr/local/bin/python
+        sudo ln -sf "$PY2" /usr/bin/python
+        python --version
+        python2 --version
 
     - name: Building recovery
       run: |
